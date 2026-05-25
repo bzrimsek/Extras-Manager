@@ -1,6 +1,12 @@
-<!-- Extras Manager — v5.1 | Locked | 2026-05-25 | Built: 2026-05-25 -->
+<!-- Extras Manager — v5.2 | Locked | 2026-05-25 | Built: 2026-05-25 -->
 <!--
 CHANGELOG
+v5.2  2026-05-25  Rule 2 — GHIN fetch deduplication.
+  Add:  ghinFetchRaw(proxy, ghinNumbers) utility — single canonical GHIN POST.
+        Uses text()+JSON.parse for detailed error messages (EM-specific pattern).
+  Fix:  bgRefreshGhinIndexes(), rosterRefreshGhin(), refreshGhinIndexes() now
+        call ghinFetchRaw instead of duplicating fetch/parse logic inline.
+
 v5.1  2026-05-25  Rule compliance fixes.
   Fix:  Removed two truly dead functions — openAddPlayer() and openPlayerDetail()
         were defined but never called anywhere (Rule 6).
@@ -20,7 +26,7 @@ v5.0  2026-05-22  (no changelog recorded)
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Extras Manager">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Extras Manager v5.1</title>
+<title>Extras Manager v5.2</title>
 <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="icon" type="image/png" href="./logo-home.png">
 <link rel="apple-touch-icon" href="./logo-home.png">
@@ -297,7 +303,7 @@ input:focus{border-color:var(--g500)}
   </div>
   <div style="flex:1;text-align:center">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:#fff;letter-spacing:2px;line-height:1">Extras Manager</div>
-    <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.5px;line-height:1.4">v5.1 · 2026-05-25</div>
+    <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.5px;line-height:1.4">v5.2 · 2026-05-25</div>
     <div id="league-pill-row" style="display:flex;justify-content:center;gap:4px;margin-top:4px;visibility:hidden">
       <button id="league-btn-wed" onclick="switchLeague('wed')"
         style="font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:12px;border:1px solid var(--gold);background:var(--gold);color:var(--g800);cursor:pointer">WED</button>
@@ -483,7 +489,7 @@ input:focus{border-color:var(--g500)}
   </div>
 
   <div class="screen" id="screen-settings">
-    <div style="font-size:10px;color:var(--txt3);text-align:right;padding:4px 0 8px;letter-spacing:.3px">v5.1 &nbsp;·&nbsp; Built <span id="build-ts"></span></div>
+    <div style="font-size:10px;color:var(--txt3);text-align:right;padding:4px 0 8px;letter-spacing:.3px">v5.2 &nbsp;·&nbsp; Built <span id="build-ts"></span></div>
     <div class="sec-hdr">
       <div class="sec-title">Seasons</div>
       <div class="sec-sub">Define seasons for standings tracking</div>
@@ -702,7 +708,7 @@ input:focus{border-color:var(--g500)}
 // STATE
 // ══════════════════════════════════════════════════════════
 const STORE       = 'gl_v4';
-const APP_VERSION     = '5.1';
+const APP_VERSION     = '5.2';
 const BUILD_TIMESTAMP = '2026-05-25';
 const VERSION_KEY = 'gl_version';
 const OLD_KEYS = ['gl_v3', 'gl_v2', 'golfleague_v2', 'golfleague_v3'];
@@ -1618,6 +1624,27 @@ function markGhinRefreshDone() {
   localStorage.setItem('lastGhinRefresh', new Date().toISOString().slice(0, 10));
 }
 
+// ── GHIN fetch utility ────────────────────────────────────────────────────
+// Single canonical GHIN POST used by all three refresh functions.
+// Takes proxy URL and array of numeric GHIN numbers.
+// Returns results array on success, [] on any error.
+// Callers handle their own {p,lg} mapping, status UI, and state writes.
+async function ghinFetchRaw(proxy, ghinNumbers) {
+  if (!proxy || !ghinNumbers.length) return [];
+  try {
+    const resp = await fetch(proxy, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ghinNumbers })
+    });
+    const rawText = await resp.text();
+    if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + rawText.slice(0, 100));
+    const data = JSON.parse(rawText);
+    if (data.error) throw new Error(data.error);
+    return data.results || [];
+  } catch(e) { throw e; } // re-throw so callers can show specific error messages
+}
+
 async function bgRefreshGhinIndexes(force) {
   const league = L();
   if (!force && !ghinRefreshDue()) return;
@@ -1632,16 +1659,9 @@ async function bgRefreshGhinIndexes(force) {
   });
   if (!allLeaguePlayers.length) return;
   try {
-    const resp = await fetch(proxy, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ghinNumbers: allLeaguePlayers.map(({p}) => Number(p.ghin)) })
-    });
-    if (!resp.ok) return;
-    const data = await resp.json();
-    if (data.error) return;
+    const results = await ghinFetchRaw(proxy, allLeaguePlayers.map(({p}) => Number(p.ghin)));
     let updated = 0;
-    (data.results || []).forEach(r => {
+    results.forEach(r => {
       if (r.handicap_index == null) return;
       allLeaguePlayers.filter(({p}) => String(p.ghin).trim() === String(r.ghin).trim())
         .forEach(({p}) => { p.hcp = parseFloat(r.handicap_index); updated++; });
@@ -3537,17 +3557,9 @@ async function rosterRefreshGhin() {
   if (!allLeaguePlayers.length) { toast('No players have a GHIN number — add them in the GHIN # column'); return; }
   showStatus(statEl, 'Fetching from GHIN...', 60000);
   try {
-    const resp = await fetch(proxy, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ghinNumbers: allLeaguePlayers.map(({p}) => Number(p.ghin)) })
-    });
-    const rawText = await resp.text();
-    if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + rawText.slice(0,100));
-    const data = JSON.parse(rawText);
-    if (data.error) throw new Error(data.error);
+    const results = await ghinFetchRaw(proxy, allLeaguePlayers.map(({p}) => Number(p.ghin)));
     let updated = 0;
-    (data.results || []).forEach(r => {
+    results.forEach(r => {
       if (r.handicap_index == null) return;
       allLeaguePlayers.filter(({p}) => String(p.ghin).trim() === String(r.ghin).trim())
         .forEach(({p}) => { p.hcp = parseFloat(r.handicap_index); updated++; });
@@ -3576,18 +3588,8 @@ async function refreshGhinIndexes() {
   if (!withGhin.length) { toast('No players have a GHIN number — add them in Roster'); return; }
   showStatus(statEl, 'Fetching from GHIN...', 60000);
   try {
-    const resp = await fetch(proxy, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ghinNumbers: withGhin.map(({p}) => Number(p.ghin)) })
-    });
-    const rawText = await resp.text();
-    if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + rawText.slice(0, 200));
-    let data;
-    try { data = JSON.parse(rawText); } catch(e) { throw new Error('Bad JSON: ' + rawText.slice(0, 200)); }
-    if (data.error) throw new Error(data.error);
+    const results = await ghinFetchRaw(proxy, withGhin.map(({p}) => Number(p.ghin)));
     let updated = 0;
-    const results = data.results || [];
     results.forEach(r => {
       if (r.handicap_index == null) return;
       withGhin.filter(({p}) => String(p.ghin).trim() === String(r.ghin).trim())
