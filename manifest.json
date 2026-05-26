@@ -1,15 +1,24 @@
 {
   "name": "Extras Manager",
   "short_name": "Extras",
-  "start_url": ".",
+  "description": "Indoor golf league management — rosters, evenings, team generation",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#1a2f1a",
   "theme_color": "#1a2f1a",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "./logo-home.png",
-      "sizes": "180x180",
-      "type": "image/png"
+      "src": "logo-home.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo-home.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
