@@ -1,6 +1,9 @@
-<!-- Extras Manager — v5.2 | Locked | 2026-05-25 | Built: 2026-05-25 -->
+<!-- Extras Manager — v5.5 | Locked | 2026-05-25 | Built: 2026-05-25 -->
 <!--
 CHANGELOG
+v5.5  2026-05-25  Formal version bump — code review remediation complete.
+  All rule violations (Rules 2,6,12) addressed. App stable.
+
 v5.2  2026-05-25  Rule 2 — GHIN fetch deduplication.
   Add:  ghinFetchRaw(proxy, ghinNumbers) utility — single canonical GHIN POST.
         Uses text()+JSON.parse for detailed error messages (EM-specific pattern).
@@ -26,9 +29,8 @@ v5.0  2026-05-22  (no changelog recorded)
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Extras Manager">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Extras Manager v5.2</title>
-<link rel="icon" type="image/png" href="./favicon.png">
-  <link rel="icon" type="image/png" href="./logo-home.png">
+<title>Extras Manager v5.5</title>
+<link rel="icon" type="image/png" href="./logo-home.png">
 <link rel="apple-touch-icon" href="./logo-home.png">
 <link rel="manifest" href="./manifest.json">
 <script>
@@ -303,7 +305,7 @@ input:focus{border-color:var(--g500)}
   </div>
   <div style="flex:1;text-align:center">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:#fff;letter-spacing:2px;line-height:1">Extras Manager</div>
-    <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.5px;line-height:1.4">v5.2 · 2026-05-25</div>
+    <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.5px;line-height:1.4">v5.5 · 2026-05-25</div>
     <div id="league-pill-row" style="display:flex;justify-content:center;gap:4px;margin-top:4px;visibility:hidden">
       <button id="league-btn-wed" onclick="switchLeague('wed')"
         style="font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:12px;border:1px solid var(--gold);background:var(--gold);color:var(--g800);cursor:pointer">WED</button>
@@ -489,7 +491,7 @@ input:focus{border-color:var(--g500)}
   </div>
 
   <div class="screen" id="screen-settings">
-    <div style="font-size:10px;color:var(--txt3);text-align:right;padding:4px 0 8px;letter-spacing:.3px">v5.2 &nbsp;·&nbsp; Built <span id="build-ts"></span></div>
+    <div style="font-size:10px;color:var(--txt3);text-align:right;padding:4px 0 8px;letter-spacing:.3px">v5.5 &nbsp;·&nbsp; Built <span id="build-ts"></span></div>
     <div class="sec-hdr">
       <div class="sec-title">Seasons</div>
       <div class="sec-sub">Define seasons for standings tracking</div>
@@ -708,7 +710,7 @@ input:focus{border-color:var(--g500)}
 // STATE
 // ══════════════════════════════════════════════════════════
 const STORE       = 'gl_v4';
-const APP_VERSION     = '5.2';
+const APP_VERSION     = '5.5';
 const BUILD_TIMESTAMP = '2026-05-25';
 const VERSION_KEY = 'gl_version';
 const OLD_KEYS = ['gl_v3', 'gl_v2', 'golfleague_v2', 'golfleague_v3'];
