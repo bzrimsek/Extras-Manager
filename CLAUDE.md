@@ -121,8 +121,6 @@ the walk until it is removed. It is empty.
 - `loadAppLog()` draws the Debug log and returns nothing - it is not a
   promise. Until v9.41 `go('debug')` chained `.then()` on it and threw, so
   the 10s auto-refresh never started.
-- Stale comment in index.html: "Coding rules: see rules.md in outputs root".
-  `rules.md` was retired to `..\_superseded\2026-10-03\`.
 
 `HANDOFF.md` (v5.0, 2026-05-23) is superseded by this file: it predates the
 database move, says rsvp.html does zero reads (it reads and PUTs), and

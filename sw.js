@@ -1,4 +1,4 @@
-const CACHE_NAME = 'extras-manager-v9.41';
+const CACHE_NAME = 'extras-manager-v9.42';
 const ASSETS = [
   './',
   './index.html',

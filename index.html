@@ -1,6 +1,7 @@
-<!-- Extras Manager — v9.41 | Build 2026-10-03 03:52 PM ET -->
+<!-- Extras Manager — v9.42 | Build 2026-10-03 04:00 PM ET -->
 <!--
 CHANGELOG
+// v9.42  2026-10-03  Comment fix: the coding-rules comment in index.html now points to ..\DEV-RULES.md, the one rule book for every app, instead of the retired rules.md. No change to how the app runs.
 // v9.41  2026-10-03  Fix: rsvp.html read and saved /state.json, which Firebase refuses since the move to bzs-golf-apps, so every RSVP link showed Unavailable; it now uses the app's own node, /bz-apps/extras-manager.json. Fix: opening Debug threw (loadAppLog().then on a function that returns nothing), so the 10s auto-refresh never started; it now refreshes, and reopening Debug no longer stacks a second timer.
 // v9.40  2026-06-11  Fix: purgeGamesBefore filter moved inside confirmDo; appLog added to game start, winner, end evening, delete, purge; blank changelogs filled
 // v9.30  2026-06-11  Fix: fbStream and fbWrite use FB_URL not FB_BASE+/state.json — fixes local status and sync
@@ -809,8 +810,8 @@ input:focus{border-color:var(--g500)}
 // STATE
 // ══════════════════════════════════════════════════════════
 const STORE       = 'gl_v4';
-const APP_VERSION     = '9.41';
-const BUILD_TIMESTAMP = '2026-10-03 03:52 PM ET'; // Eastern Time — hard-coded, update when deploying
+const APP_VERSION     = '9.42';
+const BUILD_TIMESTAMP = '2026-10-03 04:00 PM ET'; // Eastern Time — hard-coded, update when deploying
 const VERSION_KEY = 'gl_version';
 const OLD_KEYS = ['gl_v3', 'gl_v2', 'golfleague_v2', 'golfleague_v3'];
 
@@ -943,7 +944,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ── Firebase config ────────────────────────────────────────
 const FB_BASE = 'https://bzs-golf-apps-default-rtdb.firebaseio.com';
 
-// Coding rules: see rules.md in outputs root.
+// Coding rules: see ..\DEV-RULES.md (one rule book for every app).
 
 const FB_URL  = FB_BASE + '/bz-apps/extras-manager.json';
 let _fbSaveTimer = null;
