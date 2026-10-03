@@ -71,7 +71,12 @@ to Bottlefolio's).
   (fbWrite will not write without a writeKey, which only comes FROM
   Firebase). Presses every tab twice, marking it dirty before the second
   visit so it really redraws, and fails on any error or any element count
-  that grew. Then opens `rsvp.html`.
+  that grew. Then drives `rsvp.html` end to end against a **stand-in
+  Firebase**: the app's node answers with a made-up two-player league,
+  every other Firebase path answers Permission denied (as the live rules
+  answer `/state.json`), and a PUT is recorded, never sent. It picks a
+  player, presses In, saves, and fails unless the save landed on the app's
+  node with the answer in it, the writeKey kept and the roster unchanged.
 - **Population (rule 13d): the walk runs on an EMPTY league** - no players,
   no evenings. It proves every screen draws without throwing; it does not
   yet prove a full roster draws right.
@@ -80,39 +85,42 @@ Both were broken on purpose before being trusted (2026-10-03): lint caught
 a bare undefined name, a function-local const used outside its function,
 and one in rsvp.html; the walk caught a planted append on History - and
 only after the dirty-mark was added, because without it a second visit
-redraws nothing.
+redraws nothing. The rsvp step fails against v1.3 of rsvp.html, which
+shows "Unavailable", and passes against the fix.
 
 `walk.js` `KNOWN` lists faults already live, by name, so the gate can run
 without being switched off (rule 28a). An entry that stops happening fails
-the walk until it is removed.
+the walk until it is removed. It is empty.
 
 ---
 
-## Facts, checked against v9.40 on 2026-10-03
+## Facts, checked against v9.40 on 2026-10-03, updated for v9.41
 
 - **Firebase project is `bzs-golf-apps`** (since v9.10). The app reads and
   writes `/bz-apps/extras-manager.json` (since v9.30) - keys `leagues`,
   `config`, `activeLeague`, `settings`, `seasons`. The update check reads
   `/bz-apps/extras-manager/config.json`.
-- **`rsvp.html` (v1.3) still reads and writes `${FB_BASE}/state.json`**, and
-  an unauthenticated read of that path answers `Permission denied`. Open
-  question for BZ - see the changelog of whatever build settles it.
+- **`rsvp.html` reads and writes the same node through its own `FB_URL`**,
+  which must match `FB_URL` in index.html. Until v1.4 it used
+  `${FB_BASE}/state.json`, which answers `Permission denied` on
+  `bzs-golf-apps`, so from the June database move every RSVP link showed
+  "Unavailable". The walk's rsvp step is what keeps the two in step.
 - localStorage: state `gl_v4`, version `gl_version`, per-device prefs
   `gl_user_prefs` (`isAdmin()` reads `adminMode` there, not `S.config`).
 - Writes wait for `S.config.writeKey`, which only ever arrives from
   Firebase; `rsvp.html` sends a read-modify-write PUT so the key rides in
   the payload (its own comment: partial PATCHes fail the rules).
-- `rsvp.html` has its own `RSVP_VERSION` and changelog; `bump.py` does not
-  touch it.
+- `rsvp.html` has its own `RSVP_VERSION` (X.Y), `RSVP_BUILD` and
+  changelog. `bump.py` steps all three, with the same entry, only when
+  rsvp.html differs from the last commit.
 - **`ghin-worker.js` is a Cloudflare Worker**, deployed by hand in
   Cloudflare, not by the gate. `GHIN_USERNAME` / `GHIN_PASSWORD` are worker
   secrets and never in the file; the token in it is GHIN's public app token.
 - **Team generation - do not change without BZ's approval.** `makeTeams` →
   `buildTierCohorts` + `buildDealRounds` + a scorer.
-- Known live faults, both left for BZ to decide (rule 5):
-  - opening Debug throws: `go('debug')` calls `loadAppLog().then()` and
-    `loadAppLog` returns nothing, so the 10s auto-refresh never starts.
-  - the `rsvp.html` path above.
+- `loadAppLog()` draws the Debug log and returns nothing - it is not a
+  promise. Until v9.41 `go('debug')` chained `.then()` on it and threw, so
+  the 10s auto-refresh never started.
 - Stale comment in index.html: "Coding rules: see rules.md in outputs root".
   `rules.md` was retired to `..\_superseded\2026-10-03\`.
 

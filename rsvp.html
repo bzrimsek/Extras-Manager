@@ -1,5 +1,7 @@
 <!--
 CHANGELOG
+v1.4  2026-10-03 03:52 PM ET  Fix: rsvp.html read and saved /state.json, which Firebase refuses since the move to bzs-golf-apps, so every RSVP link showed Unavailable; it now uses the app's own node, /bz-apps/extras-manager.json. Fix: opening Debug threw (loadAppLog().then on a function that returns nothing), so the 10s auto-refresh never started; it now refreshes, and reopening Debug no longer stacks a second timer.
+
 v1.3  2026-05-27 8:38 AM EDT  Bug fix + security.
   Fix:  fetchWT() was called but never defined — caused Unavailable error on load.
   Fix:  Version footer positioned below card (flex-direction:column on card-wrap).
@@ -86,8 +88,11 @@ v1.1  2026-05-25  Initial self-service RSVP page.
 
 <script>
 const FB_BASE      = 'https://bzs-golf-apps-default-rtdb.firebaseio.com';
-const RSVP_VERSION = '1.3';
-const RSVP_BUILD   = '2026-05-27 8:39 AM EDT';
+// The app's own node - must match FB_URL in index.html. The old /state.json
+// answers Permission denied since the move to bzs-golf-apps (v9.10/v9.30).
+const FB_URL       = FB_BASE + '/bz-apps/extras-manager.json';
+const RSVP_VERSION = '1.4';
+const RSVP_BUILD   = '2026-10-03 03:52 PM ET';
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 async function fetchWT(url, options = {}, ms = 10000) {
@@ -138,7 +143,7 @@ async function init() {
 
   // Load state from Firebase
   try {
-    const resp  = await fetchWT(`${FB_BASE}/state.json`);
+    const resp  = await fetchWT(FB_URL);
     state = await resp.json();
     const lg    = state && state.leagues && state.leagues[league];
     if (!lg || !Array.isArray(lg.players)) throw new Error('No players');
@@ -306,7 +311,7 @@ async function submitRsvp() {
   try {
     // Read-modify-write the full state with writeKey included.
     // Firebase rules require the writeKey in the payload — partial PATCHes fail.
-    const fresh = await fetchWT(`${FB_BASE}/state.json`);
+    const fresh = await fetchWT(FB_URL);
     if (!fresh.ok) throw new Error('Could not read state');
     const fullState = await fresh.json();
 
@@ -332,7 +337,7 @@ async function submitRsvp() {
     }
 
     // PUT full state back — writeKey rides along so rules pass
-    const resp = await fetchWT(`${FB_BASE}/state.json`, {
+    const resp = await fetchWT(FB_URL, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fullState)

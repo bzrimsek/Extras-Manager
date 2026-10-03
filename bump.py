@@ -17,6 +17,11 @@ checkForUpdate compares versions with parseFloat, so a three-part 9.41.1
 would read as 9.41 and a 9.5 would read as newer than 9.41 - the scheme is
 what keeps that comparison true.
 
+rsvp.html carries its own version (RSVP_VERSION, X.Y, stepping 0.1), its
+own RSVP_BUILD stamp and its own CHANGELOG. When rsvp.html differs from the
+last commit, the same run steps those three with the same entry; when it
+does not, rsvp.html is left alone.
+
 Then cuts the lock copy extras-manager-vX.YY.html from the file just written
 (rule 23). Older lock copies are BZ's and are never deleted here.
 
@@ -25,6 +30,7 @@ Usage:
 """
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -32,6 +38,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 INDEX = HERE / 'index.html'
 SW = HERE / 'sw.js'
+RSVP = HERE / 'rsvp.html'
 
 
 def eastern_now():
@@ -64,6 +71,30 @@ def sub_once(pattern, repl, text, what):
     if n != 1:
         sys.exit('%s not found - nothing written.' % what)
     return out
+
+
+def rsvp_changed():
+    """True when rsvp.html differs from the last commit. git exits 1 for
+    'differs'; any other failure stops the bump rather than guessing."""
+    r = subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--', RSVP.name], cwd=HERE)
+    if r.returncode not in (0, 1):
+        sys.exit('git could not compare rsvp.html with the last commit - nothing written.')
+    return r.returncode == 1
+
+
+def bump_rsvp(text, stamp, entry):
+    m = re.search(r"const RSVP_VERSION = '(\d+)\.(\d+)'", text)
+    if not m:
+        sys.exit("RSVP_VERSION 'X.Y' not found in rsvp.html - nothing written.")
+    ver = '%s.%d' % (m.group(1), int(m.group(2)) + 1)
+    text = sub_once(r"(const RSVP_VERSION = ')[\d.]+(')",
+                    lambda m: m.group(1) + ver + m.group(2), text, 'RSVP_VERSION')
+    text = sub_once(r"(const RSVP_BUILD\s*=\s*')[^']*(')",
+                    lambda m: m.group(1) + stamp + m.group(2), text, 'RSVP_BUILD')
+    text = sub_once(r'(<!--\nCHANGELOG\n)',
+                    lambda m: m.group(1) + 'v%s  %s  %s\n\n' % (ver, stamp, entry),
+                    text, 'rsvp.html CHANGELOG block')
+    return ver, text
 
 
 def main():
@@ -105,13 +136,21 @@ def main():
     sw = sub_once(r"(const CACHE_NAME\s*=\s*'extras-manager-v)[\d.]+(')",
                   lambda m: m.group(1) + ver + m.group(2), sw, 'sw.js CACHE_NAME')
 
+    rsvp_ver = None
+    if rsvp_changed():
+        rsvp_ver, rsvp = bump_rsvp(RSVP.read_text(encoding='utf-8'), stamp, entry)
+
+    # Every edit above is checked before any file is written (16a).
     INDEX.write_text(html, encoding='utf-8', newline='\n')
     SW.write_text(sw, encoding='utf-8', newline='\n')
+    if rsvp_ver:
+        RSVP.write_text(rsvp, encoding='utf-8', newline='\n')
     lock = HERE / ('extras-manager-v%s.html' % ver)
     shutil.copy(INDEX, lock)
 
     print('bumped to v%s  Build %s' % (ver, stamp))
     print('changelog: // v%s  %s  %s' % (ver, day, entry))
+    print('rsvp.html: %s' % ('changed, so v' + rsvp_ver if rsvp_ver else 'unchanged, left alone'))
     print('lock:      %s' % lock.name)
     print('now run:   python push.py "short subject"')
 

@@ -32,12 +32,7 @@ const TABS = ['play', 'rsvp', 'roster', 'history', 'settings'];
    Each must still happen: a fault that stops happening fails the walk until
    it is taken off this list, so the list cannot rot.
    'who / tab: message' */
-const KNOWN = [
-  // v9.40: go('debug') calls loadAppLog().then(), and loadAppLog returns
-  // nothing - the log draws but the 10s auto-refresh never starts.
-  "admin / debug: pageerror: Cannot read properties of undefined (reading 'then')",
-  "admin / debug (second visit): pageerror: Cannot read properties of undefined (reading 'then')"
-];
+const KNOWN = [];
 
 function serve() {
   const server = http.createServer((req, res) => {
@@ -128,15 +123,85 @@ async function main() {
     await ctx.close();
   }
 
+  /* rsvp.html end to end, against a STAND-IN Firebase: the app's node
+     answers with a made-up two-player league, every other Firebase path
+     answers Permission denied as the live rules do for /state.json, and a
+     PUT is recorded here, never sent. A player picks a name, presses In,
+     saves - and the save must land on the app's node with the answer in
+     it and the writeKey kept, or the rules would refuse it. */
+  async function walkRsvp() {
+    const APP_NODE = '/bz-apps/extras-manager.json';
+    const league = {
+      config: { writeKey: 'walk-stand-in-key' },
+      leagues: { wed: { players: [
+        { id: 'pA', name: 'Walk Alpha', hcp: 10.2, ghin: '' },
+        { id: 'pB', name: 'Walk Beta', hcp: 4.1, ghin: '' }
+      ], rsvp: { date: '2099-01-07', players: {}, sendTo: {} } } }
+    };
+    const puts = [];
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 },
+                                          serviceWorkers: 'block' });
+    await ctx.route('**/*', route => {
+      const req = route.request();
+      const url = req.url();
+      if (url.startsWith(base)) return route.continue();
+      if (/firebaseio\.com/.test(url)) {
+        const p = new URL(url).pathname;
+        if (p !== APP_NODE) {
+          return route.fulfill({ status: 401, contentType: 'application/json',
+                                 body: '{"error":"Permission denied"}' });
+        }
+        if (req.method() === 'PUT') {
+          puts.push(JSON.parse(req.postData() || 'null'));
+          return route.fulfill({ status: 200, contentType: 'application/json',
+                                 body: req.postData() });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json',
+                               body: JSON.stringify(league) });
+      }
+      blocked++;
+      return route.abort();
+    });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', e => errors.push('pageerror: ' + e.message));
+    // A date far ahead so the 6pm expiry never closes the link mid-test.
+    await page.goto(base + 'rsvp.html?l=wed&d=2099-01-07&v=walk');
+    const fail = msg => failures.push('rsvp.html: ' + msg);
+    try {
+      // 'attached': an <option> in a closed dropdown never counts as visible.
+      await page.waitForSelector('#player-select option[value="pA"]',
+                                 { state: 'attached', timeout: 5000 });
+      await page.selectOption('#player-select', 'pA');
+      await page.click('#btn-in');
+      await page.click('#btn-save');
+      await page.waitForSelector('.success-msg', { timeout: 5000 });
+      const saved = puts[puts.length - 1];
+      if (puts.length !== 1) fail(puts.length + ' saves sent, expected 1');
+      else if (!saved || !saved.leagues || !saved.leagues.wed) fail('save carried no wed league');
+      else {
+        if (saved.leagues.wed.rsvp.players.pA !== 'in') fail('save did not record Walk Alpha as in');
+        if (!saved.config || saved.config.writeKey !== 'walk-stand-in-key') fail('save dropped the writeKey - the rules would refuse it');
+        if ((saved.leagues.wed.players || []).length !== 2) fail('save changed the roster');
+      }
+    } catch (e) {
+      const said = await page.evaluate(() => {
+        const s = document.getElementById('status-msg');
+        return (s && s.textContent.trim()) || document.body.innerText.slice(0, 160);
+      }).catch(() => '');
+      fail('form did not load and save against the app\'s node (' + e.message.split('\n')[0]
+           + ') - page says: ' + said.replace(/\s+/g, ' '));
+    }
+    errors.forEach(e => fail(e));
+    const ok = !failures.some(f => f.startsWith('rsvp.html'));
+    console.log('  ' + (ok ? '✓' : '✗') + ' rsvp.html: loads the league, saves an In to the app\'s node with the writeKey');
+    await ctx.close();
+  }
+
   await walkApp('player', null);
   await walkApp('admin', { adminMode: true });
 
-  const r = await open('rsvp.html?l=wed&d=2026-10-07&v=walk');
-  const rText = await r.page.evaluate(() => document.body.innerText.trim().length);
-  if (!rText) failures.push('rsvp.html: page drew nothing');
-  r.errors.forEach(e => failures.push('rsvp.html: ' + e));
-  console.log('  ' + (r.errors.length || !rText ? '✗' : '✓') + ' rsvp.html');
-  await r.ctx.close();
+  await walkRsvp();
 
   await browser.close();
   server.close();

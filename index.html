@@ -1,6 +1,7 @@
-<!-- Extras Manager — v9.40 | Build 2026-06-11 11:48 AM ET -->
+<!-- Extras Manager — v9.41 | Build 2026-10-03 03:52 PM ET -->
 <!--
 CHANGELOG
+// v9.41  2026-10-03  Fix: rsvp.html read and saved /state.json, which Firebase refuses since the move to bzs-golf-apps, so every RSVP link showed Unavailable; it now uses the app's own node, /bz-apps/extras-manager.json. Fix: opening Debug threw (loadAppLog().then on a function that returns nothing), so the 10s auto-refresh never started; it now refreshes, and reopening Debug no longer stacks a second timer.
 // v9.40  2026-06-11  Fix: purgeGamesBefore filter moved inside confirmDo; appLog added to game start, winner, end evening, delete, purge; blank changelogs filled
 // v9.30  2026-06-11  Fix: fbStream and fbWrite use FB_URL not FB_BASE+/state.json — fixes local status and sync
 // v9.20  2026-06-11  Fix sync status colors; add service worker for offline asset caching
@@ -808,8 +809,8 @@ input:focus{border-color:var(--g500)}
 // STATE
 // ══════════════════════════════════════════════════════════
 const STORE       = 'gl_v4';
-const APP_VERSION     = '9.40';
-const BUILD_TIMESTAMP = '2026-06-11 11:48 AM ET'; // Eastern Time — hard-coded, update when deploying
+const APP_VERSION     = '9.41';
+const BUILD_TIMESTAMP = '2026-10-03 03:52 PM ET'; // Eastern Time — hard-coded, update when deploying
 const VERSION_KEY = 'gl_version';
 const OLD_KEYS = ['gl_v3', 'gl_v2', 'golfleague_v2', 'golfleague_v3'];
 
@@ -1479,8 +1480,10 @@ function go(name) {
   $navBtns.forEach(b => b.classList.toggle('active', b.dataset.s === name));
   $screens.forEach(s => s.classList.toggle('active', s.id === 'screen-' + name));
   if (name === 'debug') {
-    loadAppLog().then(renderDebug);
-    _debugRefreshTimer = setInterval(() => loadAppLog().then(renderDebug), 10000);
+    // loadAppLog draws the log and returns nothing - it is not a promise.
+    loadAppLog();
+    clearInterval(_debugRefreshTimer);
+    _debugRefreshTimer = setInterval(loadAppLog, 10000);
   } else {
     clearInterval(_debugRefreshTimer);
     _debugRefreshTimer = null;
