@@ -1,0 +1,9 @@
+# Numbered lock copies and old versions stay on BZ's PC; the repo carries
+# only what the site serves plus the tools that check and ship it.
+extras-manager-v*.html
+Extras Manager v*.html
+extras-manager-project-log-*.md
+_superseded/
+node_modules/
+__pycache__/
+shots/

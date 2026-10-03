@@ -1,0 +1,96 @@
+# THE GATE. push.py sends a build to the `build` branch; this runs the checks
+# on GitHub's servers, and only a green run moves `main` - which is what
+# https://bzrimsek.github.io/Extras-Manager/ serves. A red run leaves the live
+# site untouched. Adapted from Bottlefolio's gate.yml, minus the parts this
+# app has no counterpart for (Apps Script, Firebase rules, shelf secrets).
+
+name: gate
+
+on:
+  push:
+    branches: [build]
+
+concurrency:
+  group: gate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # fast-forward main to the gated build, and nothing else
+      pages: write      # ask Pages to rebuild main if the push alone does not
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install the pinned check tools
+        run: npm ci --no-audit --no-fund
+
+      - name: Install the test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: lint - nothing undefined, duplicated or unreachable
+        run: node lint.js
+
+      - name: walk - every tab in a real browser, no errors
+        run: node walk.js
+
+      - name: Version
+        id: version
+        run: echo "app=$(grep -m1 -oP "const APP_VERSION\s*=\s*'\K[\d.]+" index.html)" >> "$GITHUB_OUTPUT"
+
+      # Checked after the checks and before anything moves: if main changed
+      # since push.py read it, this build was made from an old main and
+      # publishing it would undo that change.
+      - name: Is this build still a fast-forward of main?
+        run: |
+          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error::main moved to $(git rev-parse --short origin/main) after this build was made, so it cannot publish. Nothing changed on the live site. Push again: python push.py"
+            exit 1
+          fi
+          echo "main $(git rev-parse --short origin/main) is an ancestor of this build - safe to publish."
+
+      # Fast-forward only: refuses rather than overwrite a change made to
+      # main by hand.
+      - name: Publish - move main to this build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
+
+      - name: Ask Pages to rebuild main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" --silent \
+            || echo "Pages refused the explicit request; the push to main normally triggers a build on its own."
+
+      # The only proof it is live: ask the real site which version it serves,
+      # past the CDN cache, until it says ours.
+      - name: Wait until the live site serves this version
+        run: |
+          want="${{ steps.version.outputs.app }}"
+          url="https://bzrimsek.github.io/Extras-Manager/index.html"
+          for i in $(seq 1 120); do
+            got=$(curl -fsSL "$url?nocache=$(date +%s%N)" \
+              | grep -m1 -oP "const APP_VERSION\s*=\s*'\K[\d.]+" || true)
+            echo "live site says v${got:-?}, this build is v$want"
+            if [ "$got" = "$want" ]; then
+              echo "LIVE: v$want at https://bzrimsek.github.io/Extras-Manager/"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::The gate passed and main moved, but the site did not show v$want within 10 minutes."
+          exit 1
