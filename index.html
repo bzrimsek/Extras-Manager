@@ -1,6 +1,7 @@
-<!-- Extras Manager — v9.43 | Build 2026-10-22 05:48 PM ET -->
+<!-- Extras Manager — v9.44 | Build 2026-10-22 05:55 PM ET -->
 <!--
 CHANGELOG
+// v9.44  2026-10-22  Fix: in Settings, the Auto Index Update label was dark text on the dark Handicap Indexes card and could not be read, and the Refresh from GHIN button's grey text was faint on the same card. Both now use the light green the other Settings switches use.
 // v9.43  2026-10-22  Fix: with an odd number of players in (23 on the roster, all in), tapping one out to an even count left 2-Man greyed out, because a tap updated the screen without re-checking it; the other way, 2-Man picked at 22 and one tapped out let Generate put a player on two teams. The button now follows every tap, a 2-Man pick drops when the count goes odd, and Generate refuses 2-man on an odd count. Add: Settings has a Nights & RSVP card, shared on every phone. A night switched off leaves every night picker and is never opened; with one night on there is no picker at all and My League offers only that night. The last night on, or one with an evening in progress, cannot be switched off. RSVP off hides the RSVP tab, the Import RSVPs button and Start Evening's check-in, and the players' RSVP page says RSVP is off, as it does for a link to a night that is off.
 // v9.42  2026-10-03  Comment fix: the coding-rules comment in index.html now points to ..\DEV-RULES.md, the one rule book for every app, instead of the retired rules.md. No change to how the app runs.
 // v9.41  2026-10-03  Fix: rsvp.html read and saved /state.json, which Firebase refuses since the move to bzs-golf-apps, so every RSVP link showed Unavailable; it now uses the app's own node, /bz-apps/extras-manager.json. Fix: opening Debug threw (loadAppLog().then on a function that returns nothing), so the 10s auto-refresh never started; it now refreshes, and reopening Debug no longer stacks a second timer.
@@ -563,11 +564,11 @@ input:focus{border-color:var(--g500)}
     <div style="background:var(--g800);border-radius:10px;padding:14px;margin-bottom:18px">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--g300);letter-spacing:1px;margin-bottom:4px">Handicap Indexes</div>
       <div style="font-size:12px;color:var(--txt3);margin-bottom:10px">Fetch current GHIN indexes for all players with a GHIN number on their roster entry.</div>
-      <button class="btn btn-ghost btn-full" onclick="refreshGhinIndexes()">⛳ Refresh from GHIN</button>
+      <button class="btn btn-ghost btn-full" onclick="refreshGhinIndexes()" style="color:var(--g200);border-color:var(--g500)">⛳ Refresh from GHIN</button>
       <div id="ghin-refresh-status" style="font-size:12px;color:var(--txt2);margin-top:8px;display:none"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--bdr)">
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--txt)">Auto Index Update</div>
+          <div style="font-size:13px;font-weight:600;color:var(--g200)">Auto Index Update</div>
           <div style="font-size:11px;color:var(--txt3)" id="autoGhinRefreshDesc">On — indexes refresh automatically once per day</div>
         </div>
         <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer">
@@ -817,8 +818,8 @@ input:focus{border-color:var(--g500)}
 // STATE
 // ══════════════════════════════════════════════════════════
 const STORE       = 'gl_v4';
-const APP_VERSION     = '9.43';
-const BUILD_TIMESTAMP = '2026-10-22 05:48 PM ET'; // Eastern Time — hard-coded, update when deploying
+const APP_VERSION     = '9.44';
+const BUILD_TIMESTAMP = '2026-10-22 05:55 PM ET'; // Eastern Time — hard-coded, update when deploying
 const VERSION_KEY = 'gl_version';
 const OLD_KEYS = ['gl_v3', 'gl_v2', 'golfleague_v2', 'golfleague_v3'];
 
