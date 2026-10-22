@@ -1,5 +1,7 @@
 <!--
 CHANGELOG
+v1.5  2026-10-22 05:48 PM ET  Fix: with an odd number of players in (23 on the roster, all in), tapping one out to an even count left 2-Man greyed out, because a tap updated the screen without re-checking it; the other way, 2-Man picked at 22 and one tapped out let Generate put a player on two teams. The button now follows every tap, a 2-Man pick drops when the count goes odd, and Generate refuses 2-man on an odd count. Add: Settings has a Nights & RSVP card, shared on every phone. A night switched off leaves every night picker and is never opened; with one night on there is no picker at all and My League offers only that night. The last night on, or one with an evening in progress, cannot be switched off. RSVP off hides the RSVP tab, the Import RSVPs button and Start Evening's check-in, and the players' RSVP page says RSVP is off, as it does for a link to a night that is off.
+
 v1.4  2026-10-03 03:52 PM ET  Fix: rsvp.html read and saved /state.json, which Firebase refuses since the move to bzs-golf-apps, so every RSVP link showed Unavailable; it now uses the app's own node, /bz-apps/extras-manager.json. Fix: opening Debug threw (loadAppLog().then on a function that returns nothing), so the 10s auto-refresh never started; it now refreshes, and reopening Debug no longer stacks a second timer.
 
 v1.3  2026-05-27 8:38 AM EDT  Bug fix + security.
@@ -91,8 +93,8 @@ const FB_BASE      = 'https://bzs-golf-apps-default-rtdb.firebaseio.com';
 // The app's own node - must match FB_URL in index.html. The old /state.json
 // answers Permission denied since the move to bzs-golf-apps (v9.10/v9.30).
 const FB_URL       = FB_BASE + '/bz-apps/extras-manager.json';
-const RSVP_VERSION = '1.4';
-const RSVP_BUILD   = '2026-10-03 03:52 PM ET';
+const RSVP_VERSION = '1.5';
+const RSVP_BUILD   = '2026-10-22 05:48 PM ET';
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 async function fetchWT(url, options = {}, ms = 10000) {
@@ -150,6 +152,20 @@ async function init() {
     players = lg.players.sort((a,b) => a.name.localeCompare(b.name));
   } catch(e) {
     card.innerHTML = `<div class="logo">Extras Manager</div><div class="expired"><div class="expired-icon">⚠️</div><div class="expired-title">Unavailable</div><div class="expired-msg">Could not load league data. Try again in a moment.</div></div>`;
+    return;
+  }
+
+  // The manager's Settings switches (index.html rsvpOn / nightOn): RSVP off,
+  // or this link's night off, and the form is not offered at all.
+  const cfg = (state && state.config) || {};
+  if (cfg.rsvpOff || (cfg.nightsOff && cfg.nightsOff[league])) {
+    card.innerHTML = `
+      <div class="logo">Extras Manager</div>
+      <div class="expired">
+        <div class="expired-icon">🔕</div>
+        <div class="expired-title">RSVP Is Off</div>
+        <div class="expired-msg">RSVP is turned off for this league.<br>Contact your league manager.</div>
+      </div>`;
     return;
   }
 

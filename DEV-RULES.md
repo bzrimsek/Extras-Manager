@@ -1,4 +1,4 @@
-App Development Rules — Last updated: 2026-10-03
+App Development Rules — Last updated: 2026-10-12
 
 ONE RULE BOOK FOR EVERY APP (BZ, 2026-10-03). This file lives in
 `Apps I've Built\` and is the only copy anybody edits. Bottlefolio, MadGolf
@@ -24,17 +24,9 @@ SCOPE
 7a A shared helper has a blast radius. Before changing one, list every caller; after changing it, measure each one. A fix aimed at one caller silently changed four others and it was only luck that they survived.
 8  Never add production code to fix a preview-only problem. Preview limitations are accepted constraints.
 
-DOCUMENTATION
-9z App use is updated with every build, alongside the changelog and the
-   version bump. BZ: remember to update App Use with each build. A help
-   page describing a screen that has been rebuilt is worse than one saying
-   nothing, and consistency.js only checks the controls it has been told
-   about — so a new named control goes in BOTH the App use entry and the
-   CONTROLS list that guards it.
-
 VERSIONING
 9  bump.py is the only way to bump versions. It reads the system clock — never write timestamps manually, never ask the user for the time. Fix bump.py if it fails; don't work around it.
-10 Version bump hits five locations automatically via bump.py: file header, APP_VERSION, BUILD_TIME, UI string, sw.js CACHE_NAME. Versions are three-part major.minor.patch (patch rolls to the next minor at 100). bump.py writes the changelog entry once, to the single canonical header block.
+10 Version bump hits five locations automatically via bump.py: file header, APP_VERSION, BUILD_TIME, UI string, sw.js CACHE_NAME. Versions are three-part major.minor.patch (patch rolls to the next minor at 100) — except Extras Manager, which is two-part X.YY because its update check compares versions with parseFloat; its CLAUDE.md lists its five places. bump.py writes the changelog entry once, to the single canonical header block.
 11 Changelog entry must be filled in before delivery — never leave [describe changes here]. Write it before bumping, not after. No blank entries anywhere in the file.
 
 DIAGNOSIS BEFORE FIXING
@@ -69,13 +61,13 @@ LAYOUT & SCREEN PATTERNS
 
 FIREBASE
 20 Before any new Firebase operation, verify method, path, and writeKey payload align with existing security rules.
-21 Never write to Firebase before the load completes. Each app names its guard in its CLAUDE.md: Bottlefolio's is `FB.loaded`, set true only when the first read has landed, and every push reads it — `if (!FB.user || !FB.loaded) return;`. MadGolf's is `_fbLoaded`.
+21 Never write to Firebase before the load completes. The guard, per app: Bottlefolio's is `FB.loaded`, set true only when the first read has landed, and every push reads it — `if (!FB.user || !FB.loaded) return;`. MadGolf's is `_fbLoaded`. Extras Manager writes nothing until `S.config.writeKey` has arrived, which only ever comes from Firebase.
 21a Every uid-keyed node is writable only by its owner. When a feature needs one account to affect another, the owner records it and the other side applies it — never a cross-account write, however convenient.
 
 STATE
 22a Three lists must agree: the state defaults, what is written to this device, and what follows the account. A key in one and not the others silently does not survive a reload or does not follow the account. Anything declared mergeable must actually be synced.
 
-22b THE GATE IS TEN STEPS AND A LINTER IS ONE OF THEM. (Nine when this was written; gscheck.js is the tenth, and gate.py's FAST and SLOW lists are the count.) Added 2026-09-10, after two ReferenceErrors reached real users in a build the eight-step gate had passed — `arr` orphaned by a removal, and a bare `user` that stopped a shelf loading for anybody who arrived by an invite link. Neither was visible to a text check, to node --check (both files parse), or to any harness that never executes that line. Run `node lint.js` — it is in ship.py. Its allowed list is EMPTY and nothing joins it silently. And the lesson underneath it: the FIRST version of that linter passed with both faults deliberately put back, because its own regex had declared every function-local variable a global. Break the thing on purpose before believing the guard.
+22b EVERY APP'S GATE RUNS A LINTER. Added 2026-09-10 in Bottlefolio, after two ReferenceErrors reached real users in a build every other check had passed — `arr` orphaned by a removal, and a bare `user` that stopped a shelf loading for anybody who arrived by an invite link. Neither was visible to a text check, to node --check (both files parse), or to any harness that never executes that line. So each app's gate runs `node lint.js` (each app's CLAUDE.md lists its gate). Its allowed list is EMPTY in every app and nothing joins it silently. If one is ever added, rule 28a applies: the list must fail on an allowance nothing needs any more (MadGolf's lint.js already does). And the lesson underneath it: the FIRST version of that linter passed with both faults deliberately put back, because its own regex had declared every function-local variable a global. Break the thing on purpose before believing the guard.
 
 DELIVERY
 22 Run the pre-delivery audit script before every delivery. All checks must pass. No exceptions, no skipping.
@@ -85,8 +77,6 @@ DELIVERY
 25a MY WORK SHIPS THE MOMENT IT IS WRITTEN, not with the drop. Apps Script, Firebase rules, anything I paste into another tool — hand it over as its own file with its own walkthrough so I can do it while the gate runs. And say plainly when a piece of it depends on an app version I have not installed yet.
 25b Write the walkthrough for somebody who has not opened that tool in a month. Real menu names, real button names, the actual block of code I will be looking at and what it should read afterward. "Add two lines to your existing doPost" is not an instruction.
 25c Report the gate one check at a time, as each lands. Never run the loop silently and report at the end, and never say "running the gate" with no result attached. Read the whole output of each check, not the last line — a check once sat broken for several builds because the failure was thirty lines above a blank final line.
-
-25f CALL THE APPS SCRIPT FILE Code.gs. It is delivered from the container as lookup.gs and it lives in my project as Code.gs, and two names for one file is how a paste lands in the wrong place. Say Code.gs when handing it over. label.gs and shelf.gs match on both sides and keep their names.
 
 25e A PASTE IS NOT A DEPLOY, AND SAYING SO IS MY JOB EVERY TIME. Apps Script serves the DEPLOYED version, not the saved one, so a pasted file changes nothing until Deploy → Manage deployments → pencil on the existing deployment → New version. This has already cost a whole debugging round: BZ had pasted Code.gs, I confirmed the file contained the mash rule, and we both concluded the service was fine while the live web app ran months-old code. probeWiring cannot catch it either — it runs in the editor against saved code and will happily report every mode present while the deployment is stale. So whenever a delivery includes a .gs file, the handover says PASTE AND DEPLOY, names the menu path, and repeats it at the top of the next session until BZ confirms it. Do not assume a paste mentioned yesterday was deployed.
 
@@ -106,10 +96,10 @@ TESTING
 28a A RULE WITH NO CHECK BEHIND IT IS A SUGGESTION. Rule 27 was broken three times in one day and nothing noticed until a review went looking. When a rule turns out to have been broken, add the check that would have caught it IN THE SAME SESSION, before moving on. And where the debt is older than today's work, make the check a RATCHET rather than a wall: allow the known offenders by name, fail anything new, and add a second check so the allowed list cannot rot. A check that stands between me and shipping gets switched off rather than satisfied.
 
 29 Test harness is delivered alongside index.html and sw.js on any session that adds or modifies tests. Three files becomes four.
-30 Render/screen functions do templating only — no scoring, calculation, or business logic inline. Logic a screen needs goes in a named helper it calls (Bottlefolio: `L.shelfIndex`, `L.buddyRows`, `L.bulkStatus`; MadGolf: `leagueSessionCtx`, `liveRoundRows`, `fsScorecardData`). The harness cannot call render functions, so logic buried in them ships untested. If you are computing inside a render template, stop and extract. (The three helpers this rule used to name are from another app and are in no file here; replaced with three of this app's on 2026-09-15.)
+30 Render/screen functions do templating only — no scoring, calculation, or business logic inline. Logic a screen needs goes in a named helper it calls (Bottlefolio: `L.shelfIndex`, `L.buddyRows`, `L.bulkStatus`; MadGolf: `leagueSessionCtx`, `liveRoundRows`, `fsScorecardData`). The harness cannot call render functions, so logic buried in them ships untested. If you are computing inside a render template, stop and extract.
 
-30f AND THE SCREENS ARE ON A SIZE RATCHET. Rule 30 was a suggestion until 2026-09-15, when the architecture review measured 19 top-level functions over 150 code lines, 16 of them screens, the largest a single 450-line card holding ten Firebase calls. `consistency.js` now measures every top-level function by code lines, allows today's 51 over-100 functions BY NAME at exactly today's size, and fails anything that grows, anything new over 100, a name that has left the file, and a listed function that shrank without its allowance following it down. `node consistency.js --sizes` prints the list ready to paste. A screen only gets smaller from here.
-30a Cross-consistency — when one fact (a match status, a leaderboard row, a settlement) is rendered by more than one path (first paint, in-place updater, stored summary, live viewer), test that the paths agree from a shared game state, not each path's formatting in isolation. Two separately-green formatting tests can still disagree — that is exactly how the Nassau hole-completion popup drifted from the banner. Drive the real render through the recording-DOM harness and compare its output to the shared engine. (The three sections this rule used to point at are in another app's harness, which is in no file here; `render.js` is where this app makes screens and engine agree. Pointer dropped 2026-09-15.)
+30f AND THE SCREENS ARE ON A SIZE RATCHET. Rule 30 was a suggestion until 2026-09-15, when Bottlefolio's architecture review measured 19 top-level functions over 150 code lines, 16 of them screens, the largest a single 450-line card holding ten Firebase calls. So each app's `consistency.js` measures every top-level function by code lines, allows the functions already over 100 BY NAME at their size on the day the ratchet went in, and fails anything that grows, anything new over 100, a name that has left the file, and a listed function that shrank without its allowance following it down. `node consistency.js --sizes` prints the list; never edit a number in it by hand. A screen only gets smaller from here. Each app's CLAUDE.md says where its list lives. Bottlefolio and MadGolf have the ratchet; Extras Manager has no consistency.js yet.
+30a Cross-consistency — when one fact (a match status, a leaderboard row, a settlement) is rendered by more than one path (first paint, in-place updater, stored summary, live viewer), test that the paths agree from a shared game state, not each path's formatting in isolation. Two separately-green formatting tests can still disagree — that is exactly how the Nassau hole-completion popup drifted from the banner. Drive the real render through the recording-DOM harness and compare its output to the shared engine. Where each app does it: Bottlefolio's `render.js`; MadGolf's `madgolf-test.js` §148 Nassau, §174 DOC, §175 walk-off.
 30b The suite tests behavior through the engine and cannot see the WIRING. An element id nobody declares, a literal escape in a string, a state key that does not persist, a helper defined and never called, two functions sharing a name — all invisible to it and all shipped. A text-level check of the source catches them in a second; keep adding to it whenever a bug turns out to have been visible in the file all along.
 30c A check that asserts a label is testing the copy. Assert the behavior — that the control leads somewhere, that the number matches the engine — so a rewording does not break the gate and a real fault does.
 
@@ -128,32 +118,29 @@ BZ, after a build that ran the slowest harness in silence: you did that build
 with no process status? That needs to be part of the new process - predictable,
 faster and more communicative.
 
-The gate is ten harnesses and two of them take over a minute. Run as one
-command it prints nothing anybody can look at until it finishes, and a wait
-with no evidence in it is indistinguishable from a broken session. That
-happened repeatedly on 2026-09-10, and my answers made it worse: I said the
-walk takes 40 seconds when it takes 43, having run it dozens of times and
-never once measured it.
+Some checks in a gate take over a minute. Run as one command, a gate prints
+nothing anybody can look at until it finishes, and a wait with no evidence in
+it is indistinguishable from a broken session. That happened repeatedly in
+Bottlefolio on 2026-09-10, and my answers made it worse: I said the walk took
+40 seconds when it took 43, having run it dozens of times and never once
+measured it. And the 4,000-assertion suite turned out to be half a second —
+the thing that sounds heavy was the cheapest thing in the gate, which is
+exactly why guessing at these numbers is worthless.
 
-So, every time:
+So, every time, in every app:
 
-1. **Say what is about to run and how long it takes**, from `gatetime.py`,
-   which keeps the last thirty runs and expects the MEDIAN OF NINE (rule 13e).
-   Under nine runs it says so - it never invents a number.
-2. **Run it in groups that match the timing.** The eight fast steps belong in
-   one call (the seven there were on 2026-09-10 took 24 seconds together;
-   gscheck.js is the eighth). The walk (43s) and sync (77s) get a
-   call each, because each is long enough that somebody would otherwise be
-   sitting in silence wondering.
+1. **Say what is about to run and how long it takes**, from the app's own
+   recorded timings, as a MEDIAN OF NINE (rule 13e). Under nine runs, say so.
+   Where an app records no timings yet, say that. Never invent a number.
+2. **Run slow checks in the background and report each one as it lands**
+   (rules 25c and 25g). Fast checks may run together; anything long enough
+   that somebody would sit in silence wondering gets its own line.
 3. **Report the result the moment it lands**, with actual against expected.
 4. **Never announce a step without running it in the same turn.** Writing
    "running the walk now" and not running it is worse than silence: it reads
    as progress and there is none.
 
-Measured 2026-09-10: the whole gate is 143 seconds. sync 77, walk 43, and the
-other seven 24 between them. The 4025-assertion suite is half a second - the
-thing that sounds heavy is the cheapest thing in the gate, which is exactly
-why guessing at these numbers was worthless.
+Each app's CLAUDE.md lists its checks and how they are run.
 
 ## 36. REACH FOR THE CANON BEFORE INVENTING A VOCABULARY
 
@@ -200,3 +187,30 @@ regions, cask types, categories in law:
    not share a vocabulary. An app whose shelf holds both carries the union and
    records which wheel each group came from (`_lab/cwm.js`). Do not flatten two
    canons into one to make the code tidier — that is inventing again.
+
+## 37. A SCHEDULED ROUTINE RUNS ONE NAMED COMMAND
+
+BZ, 2026-10-11: "it can't seem to run w/o approvals of various steps."
+
+Bottlefolio's daily log routine described three steps in prose and left the
+last one — read the log lines out of Firebase — to be written fresh each
+morning. A command nobody has run before cannot match an approval BZ has
+already saved, so every run stopped and waited for him: 3h18m, 8h19m, and once
+four days. Improvising is unapprovable by construction.
+
+So a scheduled routine names ONE script that lives in the app's folder and
+ships with it (`logcheck.js` is Bottlefolio's), and its prompt says to run
+that and report. If the routine needs a new step, the step goes into the
+script, not into the prompt.
+
+## 38. READING AN ALARM MUST NOT SWITCH IT OFF
+
+Bottlefolio's `logwatch.js` marked every fault shape it found as seen, and
+both BZ's morning routine and the nightly cloud job ran it against the same
+state. Whichever ran first used up the "new", and the other reported "0 new"
+whatever had happened. The cloud job's FAILURE is what emails BZ, so a morning
+read could silently stop the email.
+
+So only the job that owns the alarm — the one whose failure reaches BZ —
+marks anything as seen. Every other reader peeks: it reports what is new,
+marks nothing, and exits clean (`logwatch.js --peek`).

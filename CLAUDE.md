@@ -118,6 +118,20 @@ the walk until it is removed. It is empty.
   secrets and never in the file; the token in it is GHIN's public app token.
 - **Team generation - do not change without BZ's approval.** `makeTeams` →
   `buildTierCohorts` + `buildDealRounds` + a scorer.
+- **Night and RSVP switches (v9.43)** live in `S.config.nightsOff`
+  (`{thu:true}` = off) and `S.config.rsvpOff`; a missing key means on.
+  `nightOn` / `nightsOn` / `pickableNights` / `rsvpOn` are the only doors -
+  every night picker (header pills, home pills, Start Evening, My League)
+  and every RSVP entry point (tab, Import RSVPs, Start Evening's check-in,
+  rsvp.html) asks them. With one night on there is no picker anywhere.
+  `applySwitches()` moves the app off a night that is off, on load and on
+  every Firebase update. BZ, 2026-10-22: Wednesday only; Thursday and Other
+  off.
+- **2-man needs an even count** (BZ: "no odd numbers for 2-man").
+  `twoManAllowed(n)` is the one door; `makeTeams(players, 2)` has no odd
+  seat and puts a player on two teams. A player tap redraws in place, so
+  `refreshTwoManButton` re-checks the button on every tap (until v9.43 it
+  stayed off after 23 → 22).
 - `loadAppLog()` draws the Debug log and returns nothing - it is not a
   promise. Until v9.41 `go('debug')` chained `.then()` on it and threw, so
   the 10s auto-refresh never started.

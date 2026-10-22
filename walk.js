@@ -129,10 +129,10 @@ async function main() {
      PUT is recorded here, never sent. A player picks a name, presses In,
      saves - and the save must land on the app's node with the answer in
      it and the writeKey kept, or the rules would refuse it. */
-  async function walkRsvp() {
+  async function walkRsvp(off) {
     const APP_NODE = '/bz-apps/extras-manager.json';
     const league = {
-      config: { writeKey: 'walk-stand-in-key' },
+      config: Object.assign({ writeKey: 'walk-stand-in-key' }, off || {}),
       leagues: { wed: { players: [
         { id: 'pA', name: 'Walk Alpha', hcp: 10.2, ghin: '' },
         { id: 'pB', name: 'Walk Beta', hcp: 4.1, ghin: '' }
@@ -168,6 +168,20 @@ async function main() {
     // A date far ahead so the 6pm expiry never closes the link mid-test.
     await page.goto(base + 'rsvp.html?l=wed&d=2099-01-07&v=walk');
     const fail = msg => failures.push('rsvp.html: ' + msg);
+    if (off) {
+      // Switched off in Settings: the page says so, offers no form, saves nothing.
+      const said = await page.evaluate(() => new Promise(ok => setTimeout(() => ok({
+        text: document.body.innerText, form: !!document.getElementById('player-select') }), 1500)));
+      if (!/RSVP is turned off/i.test(said.text) || said.form) {
+        fail('with ' + JSON.stringify(off) + ' the form was still offered');
+      }
+      if (puts.length) fail('with ' + JSON.stringify(off) + ' something was saved');
+      errors.forEach(e => fail(e));
+      const okOff = !failures.some(f => f.startsWith('rsvp.html'));
+      console.log('  ' + (okOff ? '✓' : '✗') + ' rsvp.html with ' + JSON.stringify(off) + ': says RSVP is off, no form');
+      await ctx.close();
+      return;
+    }
     try {
       // 'attached': an <option> in a closed dropdown never counts as visible.
       await page.waitForSelector('#player-select option[value="pA"]',
@@ -198,10 +212,130 @@ async function main() {
     await ctx.close();
   }
 
+  /* 2-man follows the count as players are tapped, a SEQUENCE (rule 30e).
+     BZ's night: 23 on the roster, all in, one tapped out to 22. A tap
+     updates the screen in place, and the 2-Man button kept the odd count
+     it was drawn with - stuck off at 22. The other way, 2-Man picked at 22
+     and one more tapped out let Generate put a player on two teams at 21. */
+  async function walkTwoMan() {
+    const { ctx, page, errors } = await open('index.html', null);
+    const fail = msg => failures.push('2-man: ' + msg);
+    const look = () => page.evaluate(() => {
+      const g = L().activeEvening.games[activeGameIdx];
+      const b = document.getElementById('ts-2');
+      return { n: g.playerIds.length, picked: g.pendingSize,
+               off: !b || b.disabled || b.style.pointerEvents === 'none' };
+    });
+    try {
+      await page.evaluate(() => {
+        L().players = Array.from({ length: 23 }, (_, i) =>
+          ({ id: 'w' + i, name: 'Walk' + i + ', Test', hcp: 1 + i * 1.5, status: 'regular' }));
+        confirmStartEvening();
+        selectAllPlayers(false);
+      });
+      let s = await look();
+      if (s.n !== 23 || !s.off) fail('23 in should draw 2-Man off; got ' + s.n + (s.off ? ' off' : ' on'));
+      await page.click('#prow-w22');
+      s = await look();
+      if (s.n !== 22 || s.off) fail('one tapped out to 22 should turn 2-Man on; it stayed off');
+      // force: a stuck button has pointer-events off, and a plain click
+      // would wait 30s for it instead of reporting it.
+      await page.click('#ts-2', { force: true });
+      s = await look();
+      if (s.picked !== 2) fail('2-Man could not be picked at 22');
+      await page.click('#prow-w21');
+      s = await look();
+      if (!s.off || s.picked === 2) fail('at 21, 2-Man should be off and unpicked');
+      await page.evaluate(() => generateGame());
+      const made = await page.evaluate(() => {
+        const g = L().activeEvening.games[activeGameIdx];
+        const ids = (g.teams || []).flatMap(t => (t.players || t).filter(Boolean).map(x => x.id));
+        return { places: ids.length, distinct: new Set(ids).size };
+      });
+      if (made.places !== made.distinct) fail('Generate at 21 put a player on two teams');
+    } catch (e) {
+      fail('could not drive setup: ' + e.message.split('\n')[0]);
+    }
+    errors.forEach(e => fail(e));
+    const ok = !failures.some(f => f.startsWith('2-man'));
+    console.log('  ' + (ok ? '✓' : '✗') + ' 2-man follows the count: 23 -> 22 turns it on, 22 -> 21 turns it off');
+    await ctx.close();
+  }
+
+  /* The Settings switches, driven through the real switch buttons. BZ's
+     setup: Thursday and Other off, Wednesday only - so no night picker
+     anywhere and My League offers Wednesday alone. The last night on, and a
+     night with an evening in progress, cannot go off. RSVP off hides its tab. */
+  async function walkSwitches() {
+    const { ctx, page, errors } = await open('index.html', null);
+    const fail = msg => failures.push('switches: ' + msg);
+    const flip = async key => {
+      await page.click('.nbtn[data-s="settings"]');
+      await page.click('[data-action^="switch-"][data-key="' + key + '"]');
+    };
+    const look = () => page.evaluate(() => {
+      const row = document.getElementById('league-pill-row');
+      const shown = ['wed', 'thu', 'other'].filter(k => {
+        const b = document.getElementById('league-btn-' + k);
+        return b && b.style.display !== 'none';
+      });
+      const sel = document.getElementById('pref-select-league');
+      const tab = document.querySelector('.nbtn[data-s="rsvp"]');
+      return { rowShown: !!row && row.style.display !== 'none', pills: shown.join(','),
+               myLeague: sel ? [...sel.options].filter(o => !o.disabled).map(o => o.value).join(',') : '',
+               league: S.activeLeague, rsvpTab: !!tab && tab.style.display !== 'none',
+               on: nightsOn().join(',') };
+    });
+    try {
+      let s = await look();
+      if (s.on !== 'wed,thu,other' || !s.rowShown || !s.rsvpTab) fail('a fresh app should have every night and RSVP on');
+      await flip('thu');
+      await flip('other');
+      s = await look();
+      if (s.on !== 'wed') fail('Thu and Other off should leave wed; got ' + s.on);
+      if (s.rowShown) fail('one night on should hide the night pills');
+      if (s.myLeague !== 'wed') fail('My League should offer only wed; got ' + s.myLeague);
+      if (s.league !== 'wed') fail('the app should be on wed; got ' + s.league);
+      await flip('wed');
+      s = await look();
+      if (s.on !== 'wed') fail('the last night on was switched off');
+      await page.evaluate(() => { go('play'); openEveningModal(); });
+      const picker = await page.evaluate(() => document.getElementById('m-evening-season').textContent);
+      if (/LEAGUE/.test(picker)) fail('Start Evening still offers a league with one night on');
+      await page.evaluate(() => closeM('m-evening'));
+      await flip('thu');
+      s = await look();
+      if (!s.rowShown || s.pills !== 'wed,thu') fail('Thu back on should show wed,thu pills; got ' + s.pills);
+      // An evening in progress on Wednesday: Wednesday cannot go off.
+      await page.evaluate(() => { S.activeLeague = 'wed'; confirmStartEvening(); });
+      await flip('wed');
+      s = await look();
+      if (s.on.indexOf('wed') < 0) fail('a night with an evening in progress was switched off');
+      // RSVP off, while standing on the RSVP tab.
+      await page.click('.nbtn[data-s="rsvp"]');
+      await flip('rsvp');
+      s = await look();
+      if (s.rsvpTab) fail('RSVP off should hide the RSVP tab');
+      await flip('rsvp');
+      s = await look();
+      if (!s.rsvpTab) fail('RSVP back on should show the RSVP tab');
+    } catch (e) {
+      fail('could not drive Settings: ' + e.message.split('\n')[0]);
+    }
+    errors.forEach(e => fail(e));
+    const ok = !failures.some(f => f.startsWith('switches'));
+    console.log('  ' + (ok ? '✓' : '✗') + ' switches: one night hides every picker, last night and a running evening stay on, RSVP hides its tab');
+    await ctx.close();
+  }
+
+  await walkSwitches();
+  await walkTwoMan();
   await walkApp('player', null);
   await walkApp('admin', { adminMode: true });
 
   await walkRsvp();
+  await walkRsvp({ rsvpOff: true });
+  await walkRsvp({ nightsOff: { wed: true } });
 
   await browser.close();
   server.close();

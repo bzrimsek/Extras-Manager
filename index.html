@@ -1,6 +1,7 @@
-<!-- Extras Manager — v9.42 | Build 2026-10-03 04:00 PM ET -->
+<!-- Extras Manager — v9.43 | Build 2026-10-22 05:48 PM ET -->
 <!--
 CHANGELOG
+// v9.43  2026-10-22  Fix: with an odd number of players in (23 on the roster, all in), tapping one out to an even count left 2-Man greyed out, because a tap updated the screen without re-checking it; the other way, 2-Man picked at 22 and one tapped out let Generate put a player on two teams. The button now follows every tap, a 2-Man pick drops when the count goes odd, and Generate refuses 2-man on an odd count. Add: Settings has a Nights & RSVP card, shared on every phone. A night switched off leaves every night picker and is never opened; with one night on there is no picker at all and My League offers only that night. The last night on, or one with an evening in progress, cannot be switched off. RSVP off hides the RSVP tab, the Import RSVPs button and Start Evening's check-in, and the players' RSVP page says RSVP is off, as it does for a link to a night that is off.
 // v9.42  2026-10-03  Comment fix: the coding-rules comment in index.html now points to ..\DEV-RULES.md, the one rule book for every app, instead of the retired rules.md. No change to how the app runs.
 // v9.41  2026-10-03  Fix: rsvp.html read and saved /state.json, which Firebase refuses since the move to bzs-golf-apps, so every RSVP link showed Unavailable; it now uses the app's own node, /bz-apps/extras-manager.json. Fix: opening Debug threw (loadAppLog().then on a function that returns nothing), so the 10s auto-refresh never started; it now refreshes, and reopening Debug no longer stacks a second timer.
 // v9.40  2026-06-11  Fix: purgeGamesBefore filter moved inside confirmDo; appLog added to game start, winner, end evening, delete, purge; blank changelogs filled
@@ -544,6 +545,12 @@ input:focus{border-color:var(--g500)}
         <option value="other">Other</option>
       </select>
     </div>
+    <!-- Nights and RSVP switches (shared — the same on every phone) -->
+    <div style="background:var(--g800);border-radius:10px;padding:14px;margin-bottom:18px">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--g300);letter-spacing:1px;margin-bottom:4px">Nights &amp; RSVP</div>
+      <div style="font-size:12px;color:var(--txt3);margin-bottom:6px">Shared — the same on every manager's phone. A night switched off keeps its roster and history.</div>
+      <div id="switches-list"></div>
+    </div>
     <!-- Default RSVP message (per-device) -->
     <div style="background:var(--g800);border-radius:10px;padding:14px;margin-bottom:18px">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--g300);letter-spacing:1px;margin-bottom:4px">Default RSVP Message</div>
@@ -810,8 +817,8 @@ input:focus{border-color:var(--g500)}
 // STATE
 // ══════════════════════════════════════════════════════════
 const STORE       = 'gl_v4';
-const APP_VERSION     = '9.42';
-const BUILD_TIMESTAMP = '2026-10-03 04:00 PM ET'; // Eastern Time — hard-coded, update when deploying
+const APP_VERSION     = '9.43';
+const BUILD_TIMESTAMP = '2026-10-22 05:48 PM ET'; // Eastern Time — hard-coded, update when deploying
 const VERSION_KEY = 'gl_version';
 const OLD_KEYS = ['gl_v3', 'gl_v2', 'golfleague_v2', 'golfleague_v3'];
 
@@ -1204,7 +1211,7 @@ window.addEventListener('load', () => {
     const cap = (S.settings && S.settings.historyCap) || 100;
     if (total >= cap) toast(`⚠️ History at ${total} games — review cap in Settings`);
   }, 1500);
-  updateLeagueButtons();
+  applySwitches();
   renderAll();   // render immediately from localStorage while Firebase loads
   fbStream();
   checkForUpdate();
@@ -1221,9 +1228,87 @@ window.addEventListener('load', () => {
   });
 });
 
+// ── Night and RSVP switches (Settings; shared in S.config) ──
+// A night, or RSVP, is on unless switched off - a missing key means on, so a
+// state saved before the switches existed behaves exactly as it did. Every
+// night picker and every RSVP entry point asks these, nothing else.
+const NIGHTS = ['wed', 'thu', 'other'];
+function nightOn(key) { return !(S.config && S.config.nightsOff && S.config.nightsOff[key]); }
+function nightsOn() { return NIGHTS.filter(nightOn); }
+function rsvpOn() { return !(S.config && S.config.rsvpOff); }
+
+// The switches themselves. A night cannot go off while it is the last one on
+// (the app has to open somewhere) or while it has an evening in progress.
+function toggleNight(key) {
+  if (nightOn(key)) {
+    if (nightsOn().length <= 1) { toast('At least one night has to stay on'); return; }
+    if (S.leagues[key] && S.leagues[key].activeEvening) {
+      toast('Finish the evening in progress first'); return;
+    }
+  }
+  S.config.nightsOff = Object.assign({}, S.config.nightsOff, { [key]: nightOn(key) });
+  save();
+  applySwitches();
+  renderAll();
+  renderSettings();
+  const name = { wed: 'Wednesday', thu: 'Thursday', other: 'Other nights' }[key];
+  toast(name + (nightOn(key) ? ' switched on' : ' switched off'));
+}
+
+function toggleRsvp() {
+  S.config.rsvpOff = rsvpOn();
+  save();
+  applySwitches();
+  renderAll();
+  renderSettings();
+  toast(rsvpOn() ? 'RSVP switched on' : 'RSVP switched off');
+}
+
+// Puts the switches onto the screen: off a night that is now off (switched
+// here or on another phone - toggleNight refuses one with an evening in
+// progress), then the night pills, and the RSVP tab.
+function applySwitches() {
+  if (!nightOn(S.activeLeague)) { S.activeLeague = nightsOn()[0]; activeGameIdx = 0; }
+  updateLeagueButtons();
+  const tab = document.querySelector('.nbtn[data-s="rsvp"]');
+  if (tab) tab.style.display = rsvpOn() ? '' : 'none';
+  if (!rsvpOn() && _activeTab === 'rsvp') go('play');
+}
+
+function renderSwitches() {
+  const el = document.getElementById('switches-list');
+  if (!el) return;
+  const rows = [
+    { act: 'night', key: 'wed',   name: 'Wednesday',    on: nightOn('wed') },
+    { act: 'night', key: 'thu',   name: 'Thursday',     on: nightOn('thu') },
+    { act: 'night', key: 'other', name: 'Other nights', on: nightOn('other') },
+    { act: 'rsvp',  key: 'rsvp',  name: 'RSVP',         on: rsvpOn() }
+  ];
+  el.innerHTML = rows.map(r => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--bdr)">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--g200)">${r.name}</div>
+        <div style="font-size:11px;color:var(--txt3)">${r.on ? 'On' : 'Off'}</div>
+      </div>
+      <button data-action="switch-${r.act}" data-key="${r.key}" role="switch" aria-checked="${r.on}" aria-label="${r.name}"
+        style="position:relative;width:48px;height:26px;border-radius:26px;border:0;padding:0;cursor:pointer;background:${r.on ? 'var(--gold)' : 'var(--g600)'};transition:background .2s">
+        <span style="position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transform:${r.on ? 'translateX(22px)' : 'none'};transition:transform .2s"></span>
+      </button>
+    </div>`).join('');
+}
+
+// The nights a picker offers: never one switched off, and Other only on a
+// day that is not Wednesday or Thursday. One picker or none: when this
+// returns one night there is nothing to choose and the picker is not drawn.
+function pickableNights() {
+  const dow = new Date().getDay();
+  return NIGHTS.filter(k => nightOn(k) && (k !== 'other' || (dow !== 3 && dow !== 4)));
+}
+
 function switchLeague(key) {
   // Block toggle if an active evening is in progress
   if (L().activeEvening) return;
+  if (!nightOn(key)) return;
   S.activeLeague = key;
   activeGameIdx = 0;
   save();
@@ -1233,9 +1318,13 @@ function switchLeague(key) {
 
 function updateLeagueButtons() {
   const locked = !!(S.leagues && S.leagues[S.activeLeague] && S.leagues[S.activeLeague].activeEvening);
-  ['wed','thu','other'].forEach(key => {
+  // One night on: nothing to pick, so no row - My League is the only choice.
+  const row = document.getElementById('league-pill-row');
+  if (row) row.style.display = nightsOn().length > 1 ? 'flex' : 'none';
+  NIGHTS.forEach(key => {
     const btn = document.getElementById('league-btn-' + key);
     if (!btn) return;
+    btn.style.display = nightOn(key) ? '' : 'none';
     const active = S.activeLeague === key;
     btn.style.background  = active ? 'var(--gold)' : 'transparent';
     btn.style.color       = active ? 'var(--g800)' : 'var(--gold)';
@@ -1274,6 +1363,8 @@ function autoDetectLeague() {
     else if (dow === 4) S.activeLeague = 'thu';
     else S.activeLeague = S.activeLeague || 'wed'; // leave unchanged, or wed if never set
   }
+  // A night switched off is never opened, whatever the preference or the day.
+  if (!nightOn(S.activeLeague)) S.activeLeague = nightsOn()[0];
   updateLeagueButtons();
 }
 
@@ -1464,6 +1555,8 @@ document.getElementById('screen-settings').addEventListener('click', e => {
   const action = el.dataset.action;
   if (action === 'delete-season') deleteSeason(parseInt(el.dataset.i));
   else if (action === 'edit-season') openEditSeason(parseInt(el.dataset.i));
+  else if (action === 'switch-night') toggleNight(el.dataset.key);
+  else if (action === 'switch-rsvp') toggleRsvp();
 });
 
 // Event delegation for rsvp screen (per-player in/out/maybe status buttons)
@@ -1773,6 +1866,7 @@ function syncAndRenderAll() {
     autoDetectLeague();
     const pillRow = document.getElementById('league-pill-row');
     if (pillRow) pillRow.style.visibility = 'visible';
+    applySwitches();
     markDirty('play', 'roster', 'history', 'settings', 'rsvp');
     if (ghinRefreshDue()) bgRefreshGhinIndexes(); // once-a-day — ghinRefreshDue() guards
   } catch(e) {
@@ -1830,18 +1924,18 @@ function renderNoEvening() {
       <div class="esub" style="margin-bottom:20px">Ready when you are</div>
       <button class="btn btn-gold" onclick="confirmStartEvening()">Start Evening ↗</button>
       ${(()=>{
-        const dow = new Date().getDay();
-        const showOther = (dow !== 3 && dow !== 4);
+        const keys = pickableNights();
+        if (keys.length <= 1) return '';
+        const label = { wed: 'WED', thu: 'THU', other: 'OTHER' };
         return `<div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
-          <button class="setup-btn${S.activeLeague==='wed'?' selected':''}" data-action="select-league" data-league="wed" style="font-size:13px;padding:7px 18px">WED</button>
-          <button class="setup-btn${S.activeLeague==='thu'?' selected':''}" data-action="select-league" data-league="thu" style="font-size:13px;padding:7px 18px">THU</button>
-          ${showOther ? `<button class="setup-btn${S.activeLeague==='other'?' selected':''}" data-action="select-league" data-league="other" style="font-size:13px;padding:7px 18px">OTHER</button>` : ''}
+          ${keys.map(k => `<button class="setup-btn${S.activeLeague===k?' selected':''}" data-action="select-league" data-league="${k}" style="font-size:13px;padding:7px 18px">${label[k]}</button>`).join('')}
         </div>`;
       })()}
     </div>`;
 }
 
 function selectLeagueAndRender(key) {
+  if (!nightOn(key)) return;
   S.activeLeague = key;
   updateLeagueButtons();
   renderNoEvening();
@@ -1937,7 +2031,7 @@ function confirmStartEvening() {
   // Pre-select RSVP "in" players if RSVP date matches today
   const todayStr = new Date().toISOString().slice(0,10);
   const rsvpData = getRSVP();
-  if (rsvpData.date === todayStr) {
+  if (rsvpOn() && rsvpData.date === todayStr) {
     const inPlayers = (Array.isArray(league.players)?league.players:[]).filter(p => rsvpData.players[p.id] === 'in');
     if (inPlayers.length && league.activeEvening && league.activeEvening.games.length) {
       league.activeEvening.games[0].playerIds = inPlayers.map(p => p.id);
@@ -2154,7 +2248,7 @@ function renderPlayerSelector(game, ev) {
   const outPlayers = allP.filter(p => (p.status||'regular') === 'out');
   const inSet  = new Set(game.playerIds);
   const n = game.playerIds.length;
-  const hasRsvpIns = (()=>{ const r=getRSVP(); return Object.values(r.players||{}).some(v=>v==='in'); })();
+  const hasRsvpIns = rsvpOn() && (()=>{ const r=getRSVP(); return Object.values(r.players||{}).some(v=>v==='in'); })();
   const allSelected = sorted.length > 0 && sorted.every(p => inSet.has(p.id));
 
   const renderPlayer = (p) => {
@@ -2216,7 +2310,7 @@ function renderPlayerSelector(game, ev) {
       <div style="margin-bottom:14px">
         <div style="font-size:11px;font-weight:600;color:var(--txt2);letter-spacing:.5px;margin-bottom:6px">TEAM SIZE</div>
         <div style="display:flex;gap:8px">
-          <button id="ts-2" class="setup-btn${game.pendingSize===2?' selected':''}" data-action="ts" data-val="2" ${n % 2 !== 0 ? 'disabled style="opacity:.35;pointer-events:none"' : ''}>2-Man${n % 2 !== 0 ? ' ✕' : ''}</button>
+          <button id="ts-2" class="setup-btn${game.pendingSize===2?' selected':''}" data-action="ts" data-val="2" ${twoManAllowed(n) ? '' : 'disabled style="opacity:.35;pointer-events:none"'}>2-Man${twoManAllowed(n) ? '' : ' ✕'}</button>
           <button id="ts-3" class="setup-btn${game.pendingSize===3?' selected':''}" data-action="ts" data-val="3">3-Man</button>
           <button id="ts-4" class="setup-btn${game.pendingSize===4?' selected':''}" data-action="ts" data-val="4">4-Man</button>
         </div>
@@ -2241,6 +2335,7 @@ function toggleGamePlayer(pid) {
   const idx = game.playerIds.indexOf(pid);
   if (idx >= 0) game.playerIds.splice(idx, 1);
   else game.playerIds.push(pid);
+  refreshTwoManButton(game);
   save();
 
   // Fast update: just toggle the visual state without full re-render
@@ -2304,13 +2399,33 @@ function selectAllPlayers(allSelected) {
   renderEvening();
 }
 
+// 2-man needs an even count (BZ: no odd numbers for 2-man). makeTeams has no
+// odd seat at size 2 - an odd count puts one player on two teams - so the
+// button, the tap and Generate all ask this one function.
+function twoManAllowed(n) { return n % 2 === 0; }
+
+// Redraws the 2-Man button for the current count, and drops a 2-Man pick the
+// count no longer allows. A player tap updates the screen in place rather
+// than redrawing it, so without this the button kept the count it was drawn
+// with: stuck off after 13 -> 12, still on after 12 -> 11.
+function refreshTwoManButton(game) {
+  const ok  = twoManAllowed(game.playerIds.length);
+  const btn = document.getElementById('ts-2');
+  if (!ok && game.pendingSize === 2) game.pendingSize = null;
+  if (!btn) return;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '' : '.35';
+  btn.style.pointerEvents = ok ? '' : 'none';
+  btn.textContent = ok ? '2-Man' : '2-Man ✕';
+  btn.classList.toggle('selected', game.pendingSize === 2);
+}
+
 function setTeamSize(val) {
   const game = L().activeEvening && L().activeEvening.games[activeGameIdx];
   if (!game) return;
-  // Block 2-man selection with odd number of players
   if (val === 2) {
     const n = game.playerIds.length;
-    if (n % 2 !== 0) {
+    if (!twoManAllowed(n)) {
       toast(`Can't do 2-man with ${n} players — need an even number`);
       return;
     }
@@ -2418,6 +2533,10 @@ function generateGame() {
   if (game.playerIds.length < 2) { toast('Need at least 2 players'); return; }
   const sz = game.pendingSize;
   if (!sz) { toast('Pick a team size first'); return; }
+  if (sz === 2 && !twoManAllowed(game.playerIds.length)) {
+    toast(`Can't do 2-man with ${game.playerIds.length} players — need an even number`);
+    return;
+  }
   const players = (Array.isArray(league.players)?league.players:[]).filter(p => game.playerIds.includes(p.id));
   const numT = Math.ceil(players.length / sz);
   game.teams = makeTeams(players, sz);
@@ -2891,6 +3010,7 @@ function makeTeams(players, sz) {
 // SETTINGS — SEASON MANAGEMENT
 // ══════════════════════════════════════════════════════════
 function setMyLeaguePref(key) {
+  if (!nightOn(key)) return;
   setUserPref('myLeague', key);
   S.activeLeague = key;
   activeGameIdx = 0;
@@ -2903,7 +3023,12 @@ function setMyLeaguePref(key) {
 function updateMyLeaguePrefButtons() {
   const pref = getUserPref('myLeague') || S.activeLeague;
   const sel = document.getElementById('pref-select-league');
-  if (sel) sel.value = pref;
+  if (sel) {
+    // Only nights that are on can be chosen; a saved choice of a night now
+    // off shows the night the app actually opens instead.
+    [...sel.options].forEach(o => { o.hidden = o.disabled = !nightOn(o.value); });
+    sel.value = nightOn(pref) ? pref : S.activeLeague;
+  }
   const msgArea = document.getElementById('settings-rsvp-msg');
   if (msgArea) msgArea.value = getRsvpMsgPref();
   updateGhinProxyDisplay();
@@ -2937,6 +3062,7 @@ function renderSettings() {
   }
   const capEl = document.getElementById('cfgHistoryCap');
   if (capEl) capEl.value = (S.settings && S.settings.historyCap) || 100;
+  renderSwitches();
   updateMyLeaguePrefButtons();
   const el = document.getElementById('seasons-list');
   if (!el) return;
@@ -3108,16 +3234,16 @@ function openEveningModal() {
   const detected = detectSeason();
   const el = document.getElementById('m-evening-season');
   if (el) {
+    const keys  = pickableNights();
+    const label = { wed: 'Wed Night', thu: 'Thu Night', other: 'Other' };
     el.innerHTML = `
-      <div style="margin-bottom:10px">
+      ${keys.length > 1 ? `<div style="margin-bottom:10px">
         <div style="font-size:11px;font-weight:600;color:var(--txt2);letter-spacing:.5px;margin-bottom:6px">LEAGUE</div>
         <div style="display:flex;gap:6px">
-          <button class="setup-btn${S.activeLeague==='wed'?' selected':''}" data-action="pick-league" data-league="wed" style="flex:1;font-size:12px">Wed Night</button>
-          <button class="setup-btn${S.activeLeague==='thu'?' selected':''}" data-action="pick-league" data-league="thu" style="flex:1;font-size:12px">Thu Night</button>
-          ${(()=>{ const d=new Date().getDay(); return (d!==3&&d!==4)?`<button class="setup-btn${S.activeLeague==='other'?' selected':''}" data-action="start-other-evening" style="flex:1;font-size:12px">Other</button>`:''; })()}
+          ${keys.map(k => `<button class="setup-btn${S.activeLeague===k?' selected':''}" data-action="${k === 'other' ? 'start-other-evening' : 'pick-league'}" data-league="${k}" style="flex:1;font-size:12px">${label[k]}</button>`).join('')}
         </div>
-        ${S.activeLeague==='other'?'<div style="font-size:11px;color:var(--txt3);margin-top:6px">Other evenings won\'t appear in standings or $ history.</div>':''}
-      </div>
+      </div>` : ''}
+      ${S.activeLeague==='other'?'<div style="font-size:11px;color:var(--txt3);margin-bottom:10px">Other evenings won\'t appear in standings or $ history.</div>':''}
       ${detected
         ? `Season: <strong>${detected.year} ${detected.name}</strong>`
         : `<span style="color:#f87171">No active season defined — evening will be saved without a season.<br>Add seasons in the Settings tab.</span>`
